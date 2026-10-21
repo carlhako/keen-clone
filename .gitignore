@@ -1,0 +1,20 @@
+# Build output
+build/
+/keen1
+keen1-linux-x86_64/
+keen1-linux-x86_64.tar.gz
+
+# Original game files are not distributed: supply your own copy
+*.zip
+original/
+shareware/
+data/
+*.CK1
+*.ck1
+*.EXE
+*.exe
+*.pic
+analysis/code.bin
+analysis/img/
+
+__pycache__/
