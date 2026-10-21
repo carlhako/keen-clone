@@ -40,6 +40,32 @@ If you only have the shareware installer (`1keen.zip` containing `CK1SW131.SHR`)
 the data from a game zip (`make dist GAMEZIP=/path/to/keen1.zip`) into
 `keen1-linux-x86_64.tar.gz`.
 
+## Web build
+
+`make web` builds the port for the browser with [Emscripten](https://emscripten.org)
+into `build/web/` (`index.html`, `.js`, `.wasm` and `.data`). It bundles the
+shareware episode from `shareware/data` (extract it with `tools/unshr.py`, or point
+`WEB_DATA=dir` at the v1.31 shareware files; don't bundle a registered episode).
+
+```
+git clone https://github.com/emscripten-core/emsdk.git ~/tools/emsdk
+~/tools/emsdk/emsdk install latest && ~/tools/emsdk/emsdk activate latest
+source ~/tools/emsdk/emsdk_env.sh
+make web
+python3 -m http.server 8137 --directory build/web    # then open http://localhost:8137
+```
+
+The page needs to be served over HTTP (opening `index.html` as a file doesn't work).
+Click or press a key to start, since browsers only allow sound after a user gesture.
+High scores, key settings and saved games are kept in the browser's IndexedDB.
+Browser shortcuts the page can't intercept, like Ctrl+W, still apply: redefine the
+keys with F3 if Ctrl gets in the way.
+
+The game keeps its DOS-style blocking loops: the build uses `-sASYNCIFY`, and
+`plat_vsync()` yields to the browser with `emscripten_sleep()` every frame. The
+browser-specific code is behind `#ifdef __EMSCRIPTEN__` in `src/`, plus the page and
+storage glue in `web/shell.html` and `web/pre.js`.
+
 ## Controls
 
 | Key | Action |
@@ -57,6 +83,7 @@ The original cheats work too: C+T+Space gives items, G+O+D toggles god mode.
 
 ## Repository layout
 
+- `web/` the browser page (`shell.html`) and IndexedDB glue (`pre.js`) for `make web`.
 - `src/` the port: `engine.c` (objects, collision, Keen), `actors.c` (enemies, doors,
   bridges), `menus.c` (title, map, ending, scores), `ui.c` (windows, text, status),
   `gfx.c` (LZW graphics), `kdata.c` (data from the EXE, version detection) and

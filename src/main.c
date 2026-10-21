@@ -94,6 +94,11 @@ int main(int argc, char **argv)
             return strcmp(argv[i], "--help") == 0 ? 0 : 1;
         }
     }
+#ifdef __EMSCRIPTEN__
+    /* web/pre.js mounts IndexedDB storage here; kdata.c reads the game
+     * files from /data. */
+    datadir = "/save";
+#endif
     if (scale < 1)
         scale = 1;
     if (warp_level < 0 || warp_level > 16)

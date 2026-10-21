@@ -6,6 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 uint8_t screen[SCR_W * SCR_H];
 volatile uint8_t keydown[128];
 int snd_enabled = 1;
@@ -190,7 +194,11 @@ static int64_t raw_ticks(void)
 
 void plat_delay(int ms)
 {
+#ifdef __EMSCRIPTEN__
+    emscripten_sleep((unsigned)ms);
+#else
     SDL_Delay((uint32_t)ms);
+#endif
 }
 
 uint32_t plat_ticks(void)
@@ -362,11 +370,18 @@ void plat_vsync(int n)
         if (last == 0 || now - last > period * 4)
             last = now;
         uint64_t target = last + period;
+#ifdef __EMSCRIPTEN__
+        /* ASYNCIFY unwinds the game's blocking loops here and returns to the
+         * browser, which can then draw the canvas and deliver input. */
+        now = SDL_GetPerformanceCounter();
+        emscripten_sleep(now < target ? (unsigned)((target - now) * 1000 / perf_freq) : 0);
+#else
         while ((now = SDL_GetPerformanceCounter()) < target) {
             uint64_t ms = (target - now) * 1000 / perf_freq;
             if (ms > 1)
                 SDL_Delay((uint32_t)ms - 1);
         }
+#endif
         last = target;
     }
 }
@@ -469,6 +484,14 @@ void snd_wait(void)
 
 /* ------------------------------------------------------------------ */
 
+#ifdef __EMSCRIPTEN__
+/* The page sizes the canvas with CSS; a resizable SDL window follows it at
+ * the device pixel ratio, so the renderer scales straight to screen pixels. */
+#define WINDOW_FLAGS SDL_WINDOW_ALLOW_HIGHDPI
+#else
+#define WINDOW_FLAGS 0
+#endif
+
 int plat_init(int scale, int fullscreen)
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) != 0) {
@@ -477,7 +500,7 @@ int plat_init(int scale, int fullscreen)
     }
     win = SDL_CreateWindow("Commander Keen 1: Marooned on Mars", SDL_WINDOWPOS_CENTERED,
                            SDL_WINDOWPOS_CENTERED, 320 * scale, 240 * scale,
-                           SDL_WINDOW_RESIZABLE |
+                           SDL_WINDOW_RESIZABLE | WINDOW_FLAGS |
                                (fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (!win) {
         fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commander Keen 1</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #000;
+    color: #aaaaaa;
+    font: 16px/1.5 ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+    overflow: hidden;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* The game draws 320x200 stretched to 4:3, like a CRT. */
+  #screen {
+    position: relative;
+    width: min(100vw, calc(100vh * 4 / 3));
+    aspect-ratio: 4 / 3;
+  }
+  #canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    outline: none;
+  }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75em;
+    padding: 16px;
+    box-sizing: border-box;
+    text-align: center;
+    background: #0000aa;
+  }
+  .overlay[hidden] { display: none; }
+  h1 {
+    margin: 0;
+    color: #ffff55;
+    font-size: clamp(18px, 4vw, 34px);
+    letter-spacing: 0.04em;
+  }
+  h1 small { display: block; color: #55ffff; font-size: 0.55em; letter-spacing: 0; }
+  #start { cursor: pointer; }
+  #prompt { color: #ffffff; min-height: 1.5em; }
+  #start.ready #prompt { animation: blink 1.2s steps(2, start) infinite; }
+  @keyframes blink { to { visibility: hidden; } }
+  table { border-collapse: collapse; font-size: clamp(11px, 1.8vw, 15px); }
+  td { padding: 0 0.6em; text-align: left; }
+  td:first-child { color: #55ff55; text-align: right; }
+  button {
+    font: inherit;
+    color: #000;
+    background: #55ffff;
+    border: 0;
+    padding: 0.3em 1.2em;
+    cursor: pointer;
+  }
+  button:focus-visible { outline: 2px solid #ffff55; outline-offset: 2px; }
+  .fine { font-size: 12px; color: #5555ff; max-width: 40em; }
+</style>
+</head>
+<body>
+<div id="screen">
+  <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+
+  <div id="start" class="overlay">
+    <h1>Commander Keen<small>Episode One: Marooned on Mars</small></h1>
+    <div id="prompt">Loading…</div>
+    <table>
+      <tr><td>Arrows</td><td>move</td></tr>
+      <tr><td>Ctrl</td><td>jump</td></tr>
+      <tr><td>Alt</td><td>pogo stick</td></tr>
+      <tr><td>Ctrl+Alt</td><td>fire raygun</td></tr>
+      <tr><td>Space</td><td>status</td></tr>
+      <tr><td>F1 F2 F3</td><td>help, sound, keys</td></tr>
+      <tr><td>Esc</td><td>quit</td></tr>
+    </table>
+    <div class="fine">Shareware v1.31 · Saves and high scores stay in this browser.
+      Ctrl+W still closes the tab: redefine the keys with F3 if you like.</div>
+  </div>
+
+  <div id="end" class="overlay" hidden>
+    <h1>Thanks for playing!</h1>
+    <div id="endmsg">Commander Keen is a trademark of id Software.</div>
+    <button id="again" type="button">Play again</button>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var start = document.getElementById('start');
+    var prompt = document.getElementById('prompt');
+    var ready = false, running = false;
+
+    window.Module = {
+      canvas: document.getElementById('canvas'),
+      setStatus: function (text) {
+        if (!ready && text) prompt.textContent = text.replace(/\(\d+\/\d+\)/, '').trim() || 'Loading…';
+      },
+      onRuntimeInitialized: function () {
+        ready = true;
+        start.classList.add('ready');
+        prompt.textContent = 'Click or press a key to start';
+      },
+      onExit: function (code) { finish(code ? 'The game stopped with an error (' + code + ').' : null); },
+      onAbort: function (what) { finish('The game crashed: ' + what); }
+    };
+
+    // Browsers only allow audio after a user gesture, so main() waits for one.
+    function begin(e) {
+      if (!ready || running) return;
+      if (e) e.preventDefault();
+      running = true;
+      start.hidden = true;
+      Module.canvas.focus();
+      Module.callMain([]);
+    }
+    start.addEventListener('click', begin);
+    window.addEventListener('keydown', function (e) {
+      if (!running && ready && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) begin(e);
+    });
+
+    // SDL's AudioContext may still be suspended (e.g. after the tab was in
+    // the background): any gesture wakes it up.
+    function resumeAudio() {
+      var ctx = Module.SDL2 && Module.SDL2.audioContext;
+      if (ctx && ctx.state === 'suspended') ctx.resume();
+    }
+    window.addEventListener('pointerdown', resumeAudio);
+    window.addEventListener('keydown', resumeAudio);
+
+    // The game owns the keyboard: no page scrolling on arrows/space, no
+    // browser menus on Alt/F1/F3, no reload on F5 (the game's save key).
+    window.addEventListener('keydown', function (e) {
+      if (running && !e.metaKey && e.key !== 'F11' && e.key !== 'F12') e.preventDefault();
+    }, true);
+    window.addEventListener('keyup', function (e) {
+      if (running && e.key === 'Alt') e.preventDefault();
+    }, true);
+
+    function finish(msg) {
+      running = false;
+      if (msg) document.getElementById('endmsg').textContent = msg;
+      document.getElementById('end').hidden = false;
+      document.getElementById('again').focus();
+    }
+    document.getElementById('again').addEventListener('click', function () { location.reload(); });
+  })();
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

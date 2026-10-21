@@ -7,6 +7,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+/* The game files are preloaded read-only here; gamedir is the persistent
+ * IndexedDB-backed directory for scores, settings and saves. */
+#define WEB_DATA_DIR "/data"
+#endif
+
 int16_t tileinfo[6][NUMTILES];
 uint16_t animtile[4][NUMTILES];
 int map_w, map_h;
@@ -58,23 +65,35 @@ const char *data_dir(void)
     return gamedir;
 }
 
-/* Resolve a DOS file name against the game directory, ignoring case. */
-static int find_path(const char *name, char *out, size_t outlen)
+/* Resolve a DOS file name against a directory, ignoring case. */
+static int find_in(const char *dir, const char *name, char *out, size_t outlen)
 {
-    DIR *d = opendir(gamedir);
+    DIR *d = opendir(dir);
     if (!d)
         return 0;
     struct dirent *e;
     int found = 0;
     while ((e = readdir(d))) {
         if (strcasecmp(e->d_name, name) == 0) {
-            snprintf(out, outlen, "%s/%s", gamedir, e->d_name);
+            snprintf(out, outlen, "%s/%s", dir, e->d_name);
             found = 1;
             break;
         }
     }
     closedir(d);
     return found;
+}
+
+/* Resolve a DOS file name against the game directory, ignoring case. */
+static int find_path(const char *name, char *out, size_t outlen)
+{
+#ifdef __EMSCRIPTEN__
+    if (find_in(gamedir, name, out, outlen))
+        return 1;
+    return find_in(WEB_DATA_DIR, name, out, outlen);
+#else
+    return find_in(gamedir, name, out, outlen);
+#endif
 }
 
 int file_exists(const char *name)
@@ -110,7 +129,7 @@ uint8_t *load_file(const char *name, long *len)
 int save_file(const char *name, const void *data, long len)
 {
     char path[1400];
-    if (!find_path(name, path, sizeof path)) {
+    if (!find_in(gamedir, name, path, sizeof path)) {
         /* New files are created upper case, like DOS would show them. */
         char up[64];
         snprintf(up, sizeof up, "%s", name);
@@ -123,6 +142,10 @@ int save_file(const char *name, const void *data, long len)
         return 0;
     int ok = fwrite(data, 1, len, f) == (size_t)len;
     fclose(f);
+#ifdef __EMSCRIPTEN__
+    /* Flush the write to IndexedDB (web/pre.js). */
+    EM_ASM(Module.syncSaves && Module.syncSaves());
+#endif
     return ok;
 }
 

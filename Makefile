@@ -2,6 +2,8 @@
 #
 #   make            build ./keen1
 #   make dist       build and package keen1-linux-x86_64.tar.gz with the game data
+#   make web        browser build in build/web/ (Emscripten; needs emcc on PATH,
+#                   e.g. source ~/tools/emsdk/emsdk_env.sh)
 #
 # SDL2 is found with sdl2-config / pkg-config. Without development packages,
 # point SDL2_DIR at a directory containing include/SDL2/*.h and lib/libSDL2.so.
@@ -17,8 +19,8 @@ ifdef SDL2_DIR
   SDL_CFLAGS := -I$(SDL2_DIR)/include
   SDL_LIBS   := -L$(SDL2_DIR)/lib -Wl,-rpath-link,$(SDL2_DIR)/lib -lSDL2
 else
-  SDL_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null || pkg-config --cflags sdl2)
-  SDL_LIBS   := $(shell sdl2-config --libs 2>/dev/null || pkg-config --libs sdl2)
+  SDL_CFLAGS = $(shell sdl2-config --cflags 2>/dev/null || pkg-config --cflags sdl2)
+  SDL_LIBS   = $(shell sdl2-config --libs 2>/dev/null || pkg-config --libs sdl2)
 endif
 
 keen1: $(OBJ)
@@ -48,7 +50,26 @@ dist: keen1
 	chmod +x $(DIST)/run.sh
 	tar czf $(DIST).tar.gz $(DIST)
 
+# Browser build. The blocking DOS-style loops stay as they are: ASYNCIFY
+# lets plat_vsync() yield to the browser. Only the shareware episode is
+# bundled (WEB_DATA, preloaded read-only as /data).
+EMCC     ?= emcc
+WEB_DATA ?= shareware/data
+WEB_OUT  := build/web
+WEB_FLAGS := -O2 -std=gnu11 -Wall -Wextra -Wno-unused-parameter -sUSE_SDL=2 \
+	-sASYNCIFY -sASYNCIFY_STACK_SIZE=65536 -sSTACK_SIZE=1MB -sALLOW_MEMORY_GROWTH \
+	-sINVOKE_RUN=0 -sEXIT_RUNTIME -sEXPORTED_RUNTIME_METHODS=callMain -lidbfs.js \
+	--pre-js web/pre.js --shell-file web/shell.html
+
+web: $(WEB_OUT)/index.html
+
+$(WEB_OUT)/index.html: $(SRC) src/*.h web/pre.js web/shell.html $(wildcard $(WEB_DATA)/*)
+	@test -f $(WEB_DATA)/EGAHEAD.CK1 || { echo "No Keen 1 shareware data in $(WEB_DATA)" \
+		"(extract 1keen.zip with tools/unshr.py or set WEB_DATA=dir)"; exit 1; }
+	mkdir -p $(WEB_OUT)
+	$(EMCC) $(WEB_FLAGS) -o $@ $(SRC) --preload-file $(WEB_DATA)@/data
+
 clean:
 	rm -rf build keen1 $(DIST) $(DIST).tar.gz
 
-.PHONY: dist clean
+.PHONY: dist web clean
